@@ -5,19 +5,25 @@
 #include <iostream>
 #include <map>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace {
 
-constexpr const char* kAppVersion = "v0.1.0";
+constexpr const char* kVersion = "v0.1.0";
+
+enum class PackageSource {
+    apt,
+    flatpak,
+    appimage,
+    system
+};
 
 struct PackageRecord {
     std::string id;
     std::string name;
     std::string summary;
     std::string description;
-    std::string source;
+    PackageSource source = PackageSource::apt;
     std::string version;
     std::string icon_name;
     std::string package_name;
@@ -37,7 +43,7 @@ std::string shellQuote(const std::string& value) {
     std::string out;
     out.reserve(value.size() + 2);
     out.push_back('\'');
-    for (const char ch : value) {
+    for (char ch : value) {
         if (ch == '\'') {
             out += "'\\''";
         } else {
@@ -48,64 +54,67 @@ std::string shellQuote(const std::string& value) {
     return out;
 }
 
-std::string packageStatusText(const PackageRecord& package) {
-    if (package.installed) {
-        return package.update_available ? "Update ready" : "Installed";
+std::string sourceLabel(PackageSource source) {
+    switch (source) {
+        case PackageSource::apt: return "APT";
+        case PackageSource::flatpak: return "Flatpak";
+        case PackageSource::appimage: return "AppImage";
+        case PackageSource::system: return "System";
     }
-    return package.update_available ? "Update ready" : "Available";
-}
-
-std::string sourceDisplayName(const std::string& source) {
-    if (source == "apt") return "APT";
-    if (source == "flatpak") return "Flatpak";
-    if (source == "appimage") return "AppImage";
     return "System";
 }
 
-std::vector<PackageRecord> makeDemoPackages() {
+std::string statusText(const PackageRecord& pkg) {
+    if (pkg.installed) {
+        return pkg.update_available ? "Update ready" : "Installed";
+    }
+    return pkg.update_available ? "Update ready" : "Available";
+}
+
+std::vector<PackageRecord> demoCatalog() {
     return {
-        {"firefox", "Firefox", "Fast and private browsing", "Firefox offers a fast, secure, and familiar browser experience that stays lightweight on Linux desktops.", "apt", "140.0", "firefox", "firefox", "", true, false},
-        {"vlc", "VLC", "Media player and codec suite", "VLC plays media across many formats without dragging in a heavy desktop stack.", "apt", "3.0.20", "video-x-generic", "vlc", "", false, false},
-        {"thunar", "Thunar", "XFCE file manager", "Thunar keeps file operations quick, consistent, and highly compatible with XFCE desktops.", "apt", "4.18.13", "folder", "thunar", "", true, false},
-        {"git", "Git", "Version control", "Git provides the reliable foundation for source control, patches, and lightweight system maintenance.", "apt", "2.45.0", "git", "git", "", false, false},
-        {"steam", "Steam", "Gaming client", "Steam brings Linux gaming to the desktop with a polished launcher and storefront.", "flatpak", "2.0.0", "steam", "steam", "com.valvesoftware.Steam", false, true},
-        {"discord", "Discord", "Messaging", "Discord keeps communities connected with voice, chat, and low-overhead collaboration.", "flatpak", "0.29.0", "discord", "discord", "com.discordapp.Discord", false, false},
-        {"signal", "Signal Desktop", "Encrypted messaging", "Signal provides strong end-to-end encrypted messaging for secure daily communication.", "flatpak", "7.5.0", "signal-desktop", "signal-desktop", "org.signal.Signal", false, false},
-        {"obsidian", "Obsidian", "Knowledge workspace", "Obsidian gives a focused environment for notes, references, and long-form writing.", "appimage", "1.7.16", "accessories-text-editor", "obsidian", "md.obsidian.Obsidian", false, false},
-        {"krita", "Krita", "Digital painting", "Krita keeps artistic workflows responsive and polished, without unnecessary desktop weight.", "flatpak", "5.2.0", "krita", "krita", "org.krita.Krita", false, false},
-        {"gdebi", "GDebi", "Debian package installer", "GDebi is the classic, minimal way to install local .deb files with dependency handling and clean UX.", "apt", "0.9", "package-x-generic", "gdebi", "", false, false},
-        {"appimagelauncher", "AppImageLauncher", "AppImage handling", "AppImageLauncher makes AppImage workflows smoother for desktop users who prefer portable apps.", "apt", "2.2.0", "application-x-executable", "appimagelauncher", "", false, false}
+        {"firefox", "Firefox", "Fast and private browsing", "A lightweight browser with secure defaults and a familiar experience for desktop users.", PackageSource::apt, "140.0", "firefox", "firefox", "", true, false},
+        {"vlc", "VLC", "Media player", "A compact media player with broad format support and low desktop overhead.", PackageSource::apt, "3.0.20", "video-x-generic", "vlc", "", false, false},
+        {"thunar", "Thunar", "XFCE file manager", "The native file manager of XFCE, tuned for speed, clarity, and portability.", PackageSource::apt, "4.18.13", "folder", "thunar", "", true, false},
+        {"gdebi", "GDebi", "Debian package installer", "The classic tool for installing local .deb files with dependency resolution and clean user flow.", PackageSource::apt, "0.9", "package-x-generic", "gdebi", "", false, false},
+        {"steam", "Steam", "Gaming client", "A polished gaming storefront and launcher for desktop Linux users.", PackageSource::flatpak, "2.0.0", "steam", "steam", "com.valvesoftware.Steam", false, true},
+        {"discord", "Discord", "Messaging", "A lightweight communication client for communities and voice chat.", PackageSource::flatpak, "0.29.0", "discord", "discord", "com.discordapp.Discord", false, false},
+        {"signal", "Signal Desktop", "Private messaging", "Encrypted messaging for secure day-to-day communication.", PackageSource::flatpak, "7.5.0", "signal-desktop", "signal-desktop", "org.signal.Signal", false, false},
+        {"obsidian", "Obsidian", "Knowledge workspace", "A focused workspace for notes, writing, and structured knowledge.", PackageSource::appimage, "1.7.16", "accessories-text-editor", "obsidian", "md.obsidian.Obsidian", false, false},
+        {"krita", "Krita", "Digital painting", "Professional-grade painting tools built for control and responsiveness.", PackageSource::flatpak, "5.2.0", "krita", "krita", "org.krita.Krita", false, false},
+        {"git", "Git", "Version control", "A small, stable, and dependable version control tool for software and system work.", PackageSource::apt, "2.45.0", "git", "git", "", false, false},
     };
 }
 
-std::string packageActionCommand(const PackageRecord& package) {
-    if (package.source == "apt") {
-        return "ultrapkg install " + shellQuote(package.package_name.empty() ? package.name : package.package_name);
+std::string actionCommand(const PackageRecord& pkg) {
+    switch (pkg.source) {
+        case PackageSource::apt:
+            return "ultrapkg install " + shellQuote(pkg.package_name.empty() ? pkg.name : pkg.package_name);
+        case PackageSource::flatpak:
+            return "flatpak install -y " + shellQuote(pkg.flatpak_id.empty() ? pkg.package_name : pkg.flatpak_id);
+        case PackageSource::appimage:
+            return "ultrapkg install-appimage " + shellQuote(pkg.package_name.empty() ? pkg.name : pkg.package_name);
+        case PackageSource::system:
+            return "ultrapkg install " + shellQuote(pkg.package_name.empty() ? pkg.name : pkg.package_name);
     }
-    if (package.source == "flatpak") {
-        return "flatpak install -y " + shellQuote(package.flatpak_id.empty() ? package.package_name : package.flatpak_id);
-    }
-    if (package.source == "appimage") {
-        return "ultrapkg install-appimage " + shellQuote(package.package_name.empty() ? package.name : package.package_name);
-    }
-    return "ultrapkg install " + shellQuote(package.package_name.empty() ? package.name : package.package_name);
+    return "ultrapkg install " + shellQuote(pkg.package_name.empty() ? pkg.name : pkg.package_name);
 }
 
-std::string packageOpenCommand(const std::filesystem::path& path) {
-    const std::string ext = lower(path.extension().string());
+std::string fileOpenCommand(const std::filesystem::path& file) {
+    const std::string ext = lower(file.extension().string());
     if (ext == ".deb") {
-        return "if command -v gdebi >/dev/null 2>&1; then gdebi --non-interactive " + shellQuote(path.string()) + "; else ultrapkg install " + shellQuote(path.string()) + "; fi";
+        return "if command -v gdebi >/dev/null 2>&1; then gdebi --non-interactive " + shellQuote(file.string()) + "; else ultrapkg install " + shellQuote(file.string()) + "; fi";
     }
     if (ext == ".appimage") {
-        return "chmod +x " + shellQuote(path.string()) + " && " + shellQuote(path.string());
+        return "chmod +x " + shellQuote(file.string()) + " && " + shellQuote(file.string());
     }
     if (ext == ".flatpakref") {
-        return "flatpak install --user " + shellQuote(path.string());
+        return "flatpak install --user " + shellQuote(file.string());
     }
     if (ext == ".flatpak") {
-        return "flatpak install --user " + shellQuote(path.string());
+        return "flatpak install --user " + shellQuote(file.string());
     }
-    return "ultrapkg install-file " + shellQuote(path.string());
+    return "ultrapkg install-file " + shellQuote(file.string());
 }
 
 } // namespace
@@ -123,7 +132,7 @@ public:
         set_margin_end(6);
         set_spacing(8);
         set_hexpand(true);
-        set_size_request(250, 190);
+        set_size_request(260, 190);
 
         auto* header = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL);
         header->set_spacing(10);
@@ -142,7 +151,7 @@ public:
         title->set_xalign(0.0f);
         title_box->append(*title);
 
-        auto* meta = Gtk::make_managed<Gtk::Label>(sourceDisplayName(package.source) + " • " + package.version);
+        auto* meta = Gtk::make_managed<Gtk::Label>(sourceLabel(package.source) + " • " + package.version);
         meta->set_name("small-meta");
         meta->set_xalign(0.0f);
         title_box->append(*meta);
@@ -160,7 +169,7 @@ public:
         footer->set_spacing(8);
         footer->set_hexpand(true);
 
-        auto* status = Gtk::make_managed<Gtk::Label>(packageStatusText(package));
+        auto* status = Gtk::make_managed<Gtk::Label>(statusText(package));
         status->set_name(package.installed ? "status-good" : "status-muted");
         footer->append(*status);
 
@@ -280,17 +289,13 @@ public:
             label#details-source {
                 color: #c4b5fd;
             }
-            statusbar {
-                background: rgba(15, 23, 42, 0.38);
-                color: #cbd5e1;
-            }
         )";
 
-        auto css_provider = Gtk::CssProvider::create();
-        css_provider->load_from_string(css);
+        auto provider = Gtk::CssProvider::create();
+        provider->load_from_string(css);
         auto* display = Gdk::Display::get_default();
         if (display) {
-            Gtk::StyleContext::add_provider_for_display(*display, css_provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            Gtk::StyleContext::add_provider_for_display(*display, provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
 
         root_.set_orientation(Gtk::Orientation::VERTICAL);
@@ -441,20 +446,20 @@ public:
         root_.append(main_shell_);
         root_.append(status_label_);
 
-        packages_ = makeDemoPackages();
+        packages_ = demoCatalog();
         refreshData();
     }
 
-    void openPackageFile(const std::filesystem::path& path) {
-        if (path.empty()) {
+    void openPackageFile(const std::filesystem::path& file) {
+        if (file.empty()) {
             return;
         }
-        const std::string ext = lower(path.extension().string());
+        const std::string ext = lower(file.extension().string());
         if (ext == ".deb" || ext == ".appimage" || ext == ".flatpakref" || ext == ".flatpak") {
-            installFile(path);
+            installFile(file);
             return;
         }
-        status_label_.set_text("Opened: " + path.string());
+        status_label_.set_text("Opened: " + file.string());
     }
 
 private:
@@ -467,27 +472,27 @@ private:
     }
 
     void refreshData() {
-        packages_ = makeDemoPackages();
+        packages_ = demoCatalog();
         renderPackages();
-        status_label_.set_text("Package catalogue refreshed. Ready for APT, Flatpak, and AppImage package sources.");
+        status_label_.set_text("Package catalogue refreshed. Ready for APT, Flatpak, and AppImage sources.");
     }
 
     std::vector<PackageRecord> filteredPackages() const {
         std::vector<PackageRecord> out;
         const std::string query = lower(search_entry_.get_text());
 
-        for (const auto& package : packages_) {
+        for (const auto& pkg : packages_) {
             bool include = true;
             if (current_category_ == "installed") {
-                include = package.installed;
+                include = pkg.installed;
             } else if (current_category_ == "updates") {
-                include = package.update_available;
+                include = pkg.update_available;
             } else if (current_category_ == "apt") {
-                include = package.source == "apt";
+                include = pkg.source == PackageSource::apt;
             } else if (current_category_ == "flatpak") {
-                include = package.source == "flatpak";
+                include = pkg.source == PackageSource::flatpak;
             } else if (current_category_ == "appimage") {
-                include = package.source == "appimage";
+                include = pkg.source == PackageSource::appimage;
             }
 
             if (!include) {
@@ -495,13 +500,13 @@ private:
             }
 
             if (!query.empty()) {
-                const std::string haystack = lower(package.name + " " + package.summary + " " + package.description + " " + package.source + " " + package.version);
+                const std::string haystack = lower(pkg.name + " " + pkg.summary + " " + pkg.description + " " + sourceLabel(pkg.source) + " " + pkg.version);
                 if (haystack.find(query) == std::string::npos) {
                     continue;
                 }
             }
 
-            out.push_back(package);
+            out.push_back(pkg);
         }
 
         return out;
@@ -520,45 +525,45 @@ private:
             return;
         }
 
-        for (const auto& package : filtered) {
+        for (const auto& pkg : filtered) {
             auto* card = Gtk::make_managed<PackageCard>(
-                package,
-                [this](const PackageRecord& pkg) { showPackageDetails(pkg); },
-                [this](const PackageRecord& pkg) { installPackage(pkg); });
+                pkg,
+                [this](const PackageRecord& item) { showPackageDetails(item); },
+                [this](const PackageRecord& item) { installPackage(item); });
             packages_flow_.append(*card);
         }
 
         showPackageDetails(filtered.front());
     }
 
-    void showPackageDetails(const PackageRecord& package) {
-        selected_package_ = package;
-        detail_name_.set_text(package.name);
-        detail_source_.set_text(sourceDisplayName(package.source) + " • version " + package.version + " • " + packageStatusText(package));
-        detail_summary_.set_text(package.summary);
-        detail_desc_.set_text(package.description);
-        detail_install_.set_label(package.installed ? "Update" : "Install");
+    void showPackageDetails(const PackageRecord& pkg) {
+        selected_package_ = pkg;
+        detail_name_.set_text(pkg.name);
+        detail_source_.set_text(sourceLabel(pkg.source) + " • version " + pkg.version + " • " + statusText(pkg));
+        detail_summary_.set_text(pkg.summary);
+        detail_desc_.set_text(pkg.description);
+        detail_install_.set_label(pkg.installed ? "Update" : "Install");
     }
 
-    void installPackage(const PackageRecord& package) {
-        const std::string command = packageActionCommand(package);
+    void installPackage(const PackageRecord& pkg) {
+        const std::string command = actionCommand(pkg);
         status_label_.set_text("Executing: " + command);
         const int rc = std::system(command.c_str());
         if (rc == 0) {
-            const_cast<PackageRecord&>(package).installed = true;
-            const_cast<PackageRecord&>(package).update_available = false;
+            const_cast<PackageRecord&>(pkg).installed = true;
+            const_cast<PackageRecord&>(pkg).update_available = false;
             refreshData();
         } else {
-            status_label_.set_text("Package operation failed for " + package.name + ". Verify the package source and backend availability.");
+            status_label_.set_text("Package operation failed for " + pkg.name + ". Verify the package source and backend availability.");
         }
     }
 
-    void installFile(const std::filesystem::path& path) {
-        const std::string command = packageOpenCommand(path);
-        status_label_.set_text("Opening package file: " + path.string());
+    void installFile(const std::filesystem::path& file) {
+        const std::string command = fileOpenCommand(file);
+        status_label_.set_text("Opening package file: " + file.string());
         const int rc = std::system(command.c_str());
         if (rc == 0) {
-            status_label_.set_text("Package file processed successfully: " + path.string());
+            status_label_.set_text("Package file processed successfully: " + file.string());
         } else {
             status_label_.set_text("The file could not be opened or installed. Check the package format and installed tools.");
         }
@@ -614,11 +619,9 @@ private:
 int main(int argc, char** argv) {
     auto app = Gtk::Application::create("org.flax.ultrapkgplus");
     auto* window = new MainWindow();
-
     if (argc > 1) {
         window->openPackageFile(std::filesystem::path(argv[1]));
     }
-
     window->present();
     return app->run();
 }
