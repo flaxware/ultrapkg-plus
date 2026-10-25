@@ -7,6 +7,6 @@ Exec=ultrapkg-plus %F
 Icon=ultrapkg-plus
 Terminal=false
 Categories=System;PackageManager;Utility;Settings;
-MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-appimage;application/x-iso9660-appimage;application/vnd.flatpak.ref;application/vnd.flatpak.repo;application/x-sharedlib;application/vnd.debian.binary-package;
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-appimage;application/x-iso9660-appimage;application/vnd.flatpak.ref;application/vnd.flatpak.repo;
 StartupNotify=true
 Keywords=package;install;flatpak;apt;appimage;xfce;store;

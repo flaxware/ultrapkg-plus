@@ -1,8 +1,6 @@
 #include <gtkmm.h>
 
-#include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -39,7 +37,7 @@ std::string shellQuote(const std::string& value) {
     std::string out;
     out.reserve(value.size() + 2);
     out.push_back('\'');
-    for (char ch : value) {
+    for (const char ch : value) {
         if (ch == '\'') {
             out += "'\\''";
         } else {
@@ -50,19 +48,33 @@ std::string shellQuote(const std::string& value) {
     return out;
 }
 
+std::string packageStatusText(const PackageRecord& package) {
+    if (package.installed) {
+        return package.update_available ? "Update ready" : "Installed";
+    }
+    return package.update_available ? "Update ready" : "Available";
+}
+
+std::string sourceDisplayName(const std::string& source) {
+    if (source == "apt") return "APT";
+    if (source == "flatpak") return "Flatpak";
+    if (source == "appimage") return "AppImage";
+    return "System";
+}
+
 std::vector<PackageRecord> makeDemoPackages() {
     return {
-        {"firefox", "Firefox", "Fast, private browsing", "Firefox keeps the browser light, private, and familiar while staying stable on modern Linux desktops.", "apt", "140.0", "firefox", "firefox", "", true, false},
-        {"vlc", "VLC", "Media player and codec suite", "VLC plays media across a wide range of formats without dragging in a large desktop stack.", "apt", "3.0.20", "video-x-generic", "vlc", "", false, false},
-        {"thunar", "Thunar", "XFCE file manager", "Thunar is the lightweight file manager that fits the XFCE philosophy and keeps file actions quick and predictable.", "apt", "4.18.13", "folder", "thunar", "", true, false},
-        {"git", "Git", "Version control", "Git provides a fast, reliable workflow for software projects, patches, and system maintenance.", "apt", "2.45.0", "git", "git", "", false, false},
-        {"steam", "Steam", "Gaming client", "Steam brings Linux gaming to the desktop with polished installation and launcher workflows.", "flatpak", "2.0.0", "steam", "steam", "com.valvesoftware.Steam", false, true},
-        {"discord", "Discord", "Messaging and voice", "Discord keeps communities, voice chats, and collaborations easy across a low-overhead desktop client.", "flatpak", "0.29.0", "discord", "discord", "com.discordapp.Discord", false, false},
-        {"signal", "Signal Desktop", "Encrypted messaging", "Signal provides strong end-to-end encrypted messaging for private and secure communication.", "flatpak", "7.5.0", "signal-desktop", "signal-desktop", "org.signal.Signal", false, false},
-        {"obsidian", "Obsidian", "Knowledge workspace", "Obsidian is a personal knowledge system built for notes, links, and focused long-form writing.", "appimage", "1.7.16", "accessories-text-editor", "obsidian", "md.obsidian.Obsidian", false, false},
-        {"krita", "Krita", "Digital painting", "Krita offers an artist-first workflow with modern tools that stay responsive on Linux desktops.", "flatpak", "5.2.0", "krita", "krita", "org.krita.Krita", false, false},
-        {"appimagelauncher", "AppImageLauncher", "AppImage management", "AppImageLauncher makes AppImage installation and lifecycle handling smoother for desktop users.", "apt", "2.2.0", "application-x-executable", "appimagelauncher", "", false, false},
-        {"gnome-software", "GNOME Software", "Reference design", "This entry exists as a reference benchmark for the design language and quality of package storefronts.", "system", "45.0", "package-x-generic", "gnome-software", "", false, false}
+        {"firefox", "Firefox", "Fast and private browsing", "Firefox offers a fast, secure, and familiar browser experience that stays lightweight on Linux desktops.", "apt", "140.0", "firefox", "firefox", "", true, false},
+        {"vlc", "VLC", "Media player and codec suite", "VLC plays media across many formats without dragging in a heavy desktop stack.", "apt", "3.0.20", "video-x-generic", "vlc", "", false, false},
+        {"thunar", "Thunar", "XFCE file manager", "Thunar keeps file operations quick, consistent, and highly compatible with XFCE desktops.", "apt", "4.18.13", "folder", "thunar", "", true, false},
+        {"git", "Git", "Version control", "Git provides the reliable foundation for source control, patches, and lightweight system maintenance.", "apt", "2.45.0", "git", "git", "", false, false},
+        {"steam", "Steam", "Gaming client", "Steam brings Linux gaming to the desktop with a polished launcher and storefront.", "flatpak", "2.0.0", "steam", "steam", "com.valvesoftware.Steam", false, true},
+        {"discord", "Discord", "Messaging", "Discord keeps communities connected with voice, chat, and low-overhead collaboration.", "flatpak", "0.29.0", "discord", "discord", "com.discordapp.Discord", false, false},
+        {"signal", "Signal Desktop", "Encrypted messaging", "Signal provides strong end-to-end encrypted messaging for secure daily communication.", "flatpak", "7.5.0", "signal-desktop", "signal-desktop", "org.signal.Signal", false, false},
+        {"obsidian", "Obsidian", "Knowledge workspace", "Obsidian gives a focused environment for notes, references, and long-form writing.", "appimage", "1.7.16", "accessories-text-editor", "obsidian", "md.obsidian.Obsidian", false, false},
+        {"krita", "Krita", "Digital painting", "Krita keeps artistic workflows responsive and polished, without unnecessary desktop weight.", "flatpak", "5.2.0", "krita", "krita", "org.krita.Krita", false, false},
+        {"gdebi", "GDebi", "Debian package installer", "GDebi is the classic, minimal way to install local .deb files with dependency handling and clean UX.", "apt", "0.9", "package-x-generic", "gdebi", "", false, false},
+        {"appimagelauncher", "AppImageLauncher", "AppImage handling", "AppImageLauncher makes AppImage workflows smoother for desktop users who prefer portable apps.", "apt", "2.2.0", "application-x-executable", "appimagelauncher", "", false, false}
     };
 }
 
@@ -79,24 +91,21 @@ std::string packageActionCommand(const PackageRecord& package) {
     return "ultrapkg install " + shellQuote(package.package_name.empty() ? package.name : package.package_name);
 }
 
-std::string packageStatusText(const PackageRecord& package) {
-    if (package.installed) {
-        return package.update_available ? "Update ready" : "Installed";
+std::string packageOpenCommand(const std::filesystem::path& path) {
+    const std::string ext = lower(path.extension().string());
+    if (ext == ".deb") {
+        return "if command -v gdebi >/dev/null 2>&1; then gdebi --non-interactive " + shellQuote(path.string()) + "; else ultrapkg install " + shellQuote(path.string()) + "; fi";
     }
-    return package.update_available ? "Update ready" : "Available";
-}
-
-std::string sourceDisplayName(const std::string& source) {
-    if (source == "apt") {
-        return "APT";
+    if (ext == ".appimage") {
+        return "chmod +x " + shellQuote(path.string()) + " && " + shellQuote(path.string());
     }
-    if (source == "flatpak") {
-        return "Flatpak";
+    if (ext == ".flatpakref") {
+        return "flatpak install --user " + shellQuote(path.string());
     }
-    if (source == "appimage") {
-        return "AppImage";
+    if (ext == ".flatpak") {
+        return "flatpak install --user " + shellQuote(path.string());
     }
-    return "System";
+    return "ultrapkg install-file " + shellQuote(path.string());
 }
 
 } // namespace
@@ -182,34 +191,106 @@ public:
         set_name("ultrapkg-window");
         set_icon_name("ultrapkg-plus");
 
-        auto css = Gtk::CssProvider::create();
-        css->load_from_data(
-            "window#ultrapkg-window { background: linear-gradient(180deg, #0a1020 0%, #0f172a 55%, #111827 100%); color: #e2e8f0; }
-             box#sidebar { background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 18px; }
-             button#sidebar-button { background: rgba(148, 163, 184, 0.08); color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 10px 12px; }
-             button#sidebar-button:hover { background: rgba(168, 85, 247, 0.18); }
-             button#sidebar-button.active { background: linear-gradient(180deg, rgba(139, 92, 246, 0.34), rgba(91, 33, 182, 0.4)); border-color: rgba(216, 180, 254, 0.5); }
-             box#package-card { background: rgba(15, 23, 42, 0.52); border: 1px solid rgba(148, 163, 184, 0.12); border-radius: 16px; }
-             label#small-meta { color: #94a3b8; font-size: 11px; }
-             label#status-good { color: #86efac; }
-             label#status-muted { color: #cbd5e1; }
-             button#action-button { background: linear-gradient(180deg, #7c3aed 0%, #8b5cf6 100%); color: white; border: none; border-radius: 10px; }
-             button#action-button:hover { background: linear-gradient(180deg, #8b5cf6 0%, #a78bfa 100%); }
-             entry#search-entry { background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.23); border-radius: 12px; color: #f8fafc; }
-             button#primary { background: linear-gradient(180deg, #7c3aed 0%, #8b5cf6 100%); color: #fff; border: none; border-radius: 12px; padding: 10px 16px; }
-             button#primary:hover { background: linear-gradient(180deg, #8b5cf6 0%, #a78bfa 100%); }
-             button#secondary { background: rgba(148, 163, 184, 0.08); color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px 16px; }
-             button#secondary:hover { background: rgba(148, 163, 184, 0.14); }
-             box#detail-pane { background: rgba(15, 23, 42, 0.42); border: 1px solid rgba(148, 163, 184, 0.12); border-radius: 18px; }
-             label#details-title { font-size: 28px; font-weight: 700; }
-             label#details-body { color: #dbeafe; }
-             label#details-source { color: #c4b5fd; }
-             statusbar { background: rgba(15, 23, 42, 0.38); color: #cbd5e1; }");
+        const std::string css = R"(
+            window#ultrapkg-window {
+                background: linear-gradient(180deg, #0b1020 0%, #111827 100%);
+                color: #e2e8f0;
+            }
+            box#sidebar {
+                background: rgba(15, 23, 42, 0.65);
+                border: 1px solid rgba(148, 163, 184, 0.15);
+                border-radius: 18px;
+            }
+            button#sidebar-button {
+                background: rgba(148, 163, 184, 0.08);
+                color: #f8fafc;
+                border: 1px solid rgba(148, 163, 184, 0.14);
+                border-radius: 12px;
+                padding: 10px 12px;
+            }
+            button#sidebar-button:hover {
+                background: rgba(168, 85, 247, 0.18);
+            }
+            button#sidebar-button.active {
+                background: linear-gradient(180deg, rgba(139, 92, 246, 0.34), rgba(91, 33, 182, 0.4));
+                border-color: rgba(216, 180, 254, 0.5);
+            }
+            box#package-card {
+                background: rgba(15, 23, 42, 0.52);
+                border: 1px solid rgba(148, 163, 184, 0.12);
+                border-radius: 16px;
+            }
+            label#small-meta {
+                color: #94a3b8;
+                font-size: 11px;
+            }
+            label#status-good {
+                color: #86efac;
+            }
+            label#status-muted {
+                color: #cbd5e1;
+            }
+            button#action-button {
+                background: linear-gradient(180deg, #7c3aed 0%, #8b5cf6 100%);
+                color: white;
+                border: none;
+                border-radius: 10px;
+            }
+            button#action-button:hover {
+                background: linear-gradient(180deg, #8b5cf6 0%, #a78bfa 100%);
+            }
+            entry#search-entry {
+                background: rgba(15, 23, 42, 0.7);
+                border: 1px solid rgba(148, 163, 184, 0.23);
+                border-radius: 12px;
+                color: #f8fafc;
+            }
+            button#primary {
+                background: linear-gradient(180deg, #7c3aed 0%, #8b5cf6 100%);
+                color: #fff;
+                border: none;
+                border-radius: 12px;
+                padding: 10px 16px;
+            }
+            button#primary:hover {
+                background: linear-gradient(180deg, #8b5cf6 0%, #a78bfa 100%);
+            }
+            button#secondary {
+                background: rgba(148, 163, 184, 0.08);
+                color: #f8fafc;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 12px;
+                padding: 10px 16px;
+            }
+            button#secondary:hover {
+                background: rgba(148, 163, 184, 0.14);
+            }
+            box#detail-pane {
+                background: rgba(15, 23, 42, 0.42);
+                border: 1px solid rgba(148, 163, 184, 0.12);
+                border-radius: 18px;
+            }
+            label#details-title {
+                font-size: 28px;
+                font-weight: 700;
+            }
+            label#details-body {
+                color: #dbeafe;
+            }
+            label#details-source {
+                color: #c4b5fd;
+            }
+            statusbar {
+                background: rgba(15, 23, 42, 0.38);
+                color: #cbd5e1;
+            }
+        )";
 
-        auto screen = get_screen();
-        if (screen) {
-            auto context = get_style_context();
-            context->add_provider_for_screen(*screen, css, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        auto css_provider = Gtk::CssProvider::create();
+        css_provider->load_from_string(css);
+        auto* display = Gdk::Display::get_default();
+        if (display) {
+            Gtk::StyleContext::add_provider_for_display(*display, css_provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
 
         root_.set_orientation(Gtk::Orientation::VERTICAL);
@@ -220,7 +301,7 @@ public:
         header_.set_show_title_buttons(true);
         header_.set_hexpand(true);
         title_widget_.set_text("Ultrapkg Plus");
-        title_widget_.set_name("title");
+        title_widget_.set_name("details-title");
 
         toolbar_.set_spacing(12);
         toolbar_.set_margin_start(18);
@@ -231,7 +312,7 @@ public:
         search_entry_.set_name("search-entry");
         search_entry_.set_placeholder_text("Search packages, sources, and apps…");
         search_entry_.set_hexpand(true);
-        search_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &MainWindow::renderPackages));
+        search_entry_.signal_changed().connect(sigc::mem_fun(*this, &MainWindow::renderPackages));
 
         refresh_button_.set_label("Refresh");
         refresh_button_.set_name("secondary");
@@ -349,10 +430,16 @@ public:
         main_shell_.append(sidebar_);
         main_shell_.append(content_area_);
 
+        status_label_.set_name("details-body");
+        status_label_.set_margin_start(18);
+        status_label_.set_margin_end(18);
+        status_label_.set_margin_bottom(12);
+        status_label_.set_wrap(true);
+
         root_.append(header_);
         root_.append(toolbar_);
         root_.append(main_shell_);
-        root_.append(status_bar_);
+        root_.append(status_label_);
 
         packages_ = makeDemoPackages();
         refreshData();
@@ -367,7 +454,7 @@ public:
             installFile(path);
             return;
         }
-        status_bar_.set_text("Opened: " + path.string());
+        status_label_.set_text("Opened: " + path.string());
     }
 
 private:
@@ -382,7 +469,7 @@ private:
     void refreshData() {
         packages_ = makeDemoPackages();
         renderPackages();
-        status_bar_.set_text("Package catalogue refreshed. Ready for APT, Flatpak, and AppImage sources.");
+        status_label_.set_text("Package catalogue refreshed. Ready for APT, Flatpak, and AppImage package sources.");
     }
 
     std::vector<PackageRecord> filteredPackages() const {
@@ -421,8 +508,8 @@ private:
     }
 
     void renderPackages() {
-        for (auto* child : packages_flow_.get_children()) {
-            delete child;
+        while (auto* child = packages_flow_.get_first_child()) {
+            packages_flow_.remove(*child);
         }
 
         const auto filtered = filteredPackages();
@@ -455,39 +542,25 @@ private:
 
     void installPackage(const PackageRecord& package) {
         const std::string command = packageActionCommand(package);
-        status_bar_.set_text("Executing: " + command);
+        status_label_.set_text("Executing: " + command);
         const int rc = std::system(command.c_str());
         if (rc == 0) {
             const_cast<PackageRecord&>(package).installed = true;
             const_cast<PackageRecord&>(package).update_available = false;
             refreshData();
         } else {
-            status_bar_.set_text("Package operation failed for " + package.name + ". Verify the package source and backend availability.");
+            status_label_.set_text("Package operation failed for " + package.name + ". Verify the package source and backend availability.");
         }
     }
 
     void installFile(const std::filesystem::path& path) {
-        const std::string ext = lower(path.extension().string());
-        std::string command;
-
-        if (ext == ".deb") {
-            command = "ultrapkg install " + shellQuote(path.string());
-        } else if (ext == ".appimage") {
-            command = "chmod +x " + shellQuote(path.string()) + " && " + shellQuote(path.string());
-        } else if (ext == ".flatpakref") {
-            command = "flatpak install --user " + shellQuote(path.string());
-        } else if (ext == ".flatpak") {
-            command = "flatpak install --user " + shellQuote(path.string());
-        } else {
-            command = "ultrapkg install-file " + shellQuote(path.string());
-        }
-
-        status_bar_.set_text("Opening package file: " + path.string());
+        const std::string command = packageOpenCommand(path);
+        status_label_.set_text("Opening package file: " + path.string());
         const int rc = std::system(command.c_str());
         if (rc == 0) {
-            status_bar_.set_text("Package file processed successfully: " + path.string());
+            status_label_.set_text("Package file processed successfully: " + path.string());
         } else {
-            status_bar_.set_text("The file could not be opened or installed. Check the package format and the installed backend tools.");
+            status_label_.set_text("The file could not be opened or installed. Check the package format and installed tools.");
         }
     }
 
@@ -532,7 +605,7 @@ private:
     Gtk::Box detail_buttons_{Gtk::Orientation::HORIZONTAL};
     Gtk::Button detail_install_;
     Gtk::Button detail_file_;
-    Gtk::Statusbar status_bar_;
+    Gtk::Label status_label_{"Ready"};
     std::vector<PackageRecord> packages_;
     std::string current_category_ = "overview";
     PackageRecord selected_package_{};
@@ -540,11 +613,12 @@ private:
 
 int main(int argc, char** argv) {
     auto app = Gtk::Application::create("org.flax.ultrapkgplus");
-    auto window = Gtk::make_managed<MainWindow>();
+    auto* window = new MainWindow();
 
     if (argc > 1) {
         window->openPackageFile(std::filesystem::path(argv[1]));
     }
 
-    return app->run(*window, argc, argv);
+    window->present();
+    return app->run();
 }
