@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui>
+  <actions>
+    <action name="ultrapkg-plus-open">
+      <icon>ultrapkg-plus</icon>
+      <name>Open with Ultrapkg Plus</name>
+      <command>ultrapkg-plus "%f"</command>
+      <description>Open a package file in Ultrapkg Plus for install or review.</description>
+      <patterns>*</patterns>
+      <directories>false</directories>
+      <text-files>false</text-files>
+      <audio-files>false</audio-files>
+      <image-files>false</image-files>
+      <video-files>false</video-files>
+      <other-files>false</other-files>
+      <execution>DBus</execution>
+    </action>
+  </actions>
+</ui>

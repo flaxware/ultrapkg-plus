@@ -1,86 +1,41 @@
 # Ultrapkg Plus
 
-Ultrapkg Plus is the premium graphical front-end for the `ultrapkg` backend.
+Ultrapkg Plus is a lightweight XFCE-native package store for desktops that prefer minimal resource use, clean workflows, and strong portability.
 
-It is intentionally separate from the core backend package so the system remains modular, clean, and maintainable.
+It is designed to work as a premium front-end for `ultrapkg` while also handling Flatpak and AppImage packages from a single desktop experience.
 
-The GUI is designed to feel premium and polished, inspired by the best parts of AppManager, but adapted to the Flax system direction and XFCE/XFWM environment.
+## Design goals
 
-This is a C++ GTK application with a candy-like visual language: soft glass, purple highlights, clean cards, fast actions, and little visual noise.
+- Keep the user experience polished without dragging in a heavy app-store stack.
+- Prefer GTK-native integration instead of web or Qt dependencies.
+- Fit naturally into XFCE and Thunar workflows.
+- Make `.deb`, `.appimage`, and `.flatpakref` installation feel like a native desktop action.
+- Keep the backend thin and the UI simple.
 
-## Why separate GUI package?
+## Versioning
 
-Because the backend and the UI are different jobs.
+The project starts at `v0.1.0` and follows a lightweight semantic model for the desktop frontend.
 
-- `ultrapkg` = engine, logic, package operations, metadata, CLI tools
-- `ultrapkg-plus` = user experience, package browsing, drag-and-drop install flow, premium desktop polish
+## Dependencies
 
-This keeps the project clean and hierarchical.
-
-## Design direction
-
-- AppManager-inspired elegance
-- Flax-system philosophy: simple, clear, stable, modular
-- XFCE/XFWM compatibility first
-- lightweight interface, not a heavyweight app-store shell
-- premium look without killing performance
-
-## Features
-
-- drag-and-drop `.deb` install
-- install/uninstall buttons
-- package metadata panel
-- quick package info display
-- desktop layout optimized for Linux and XFCE
-- backend calls to `ultrapkg` as the engine
+- CMake 3.21+
+- C++20 compiler
+- pkg-config
+- gtkmm-4.0
 
 ## Build
-
-### Dependencies
-
-On Debian/Ubuntu:
-
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake pkg-config libgtkmm-4.0-dev
-```
-
-### Build
 
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
 
-### Run
+## Runtime integration
 
-```bash
-./build/ultrapkg-plus
-```
-
-## Usage
-
-1. Start `ultrapkg-plus`
-2. Drag a `.deb` into the install area or click Select Package
-3. Review metadata
-4. Click Install
-5. Use Uninstall for installed packages when needed
-
-## Backend contract
-
-`ultrapkg-plus` talks to the backend package via the `ultrapkg` CLI.
-
-This means:
-- the UI stays thin
-- logic stays in the backend
-- maintainability stays high
-- package operations stay consistent
-
-## License
-
-GPL-3.0-or-later
+- Install the desktop entry: `ultrapkg-plus.desktop`
+- Install the icon: `ultrapkg-plus.svg`
+- Register Thunar actions via `data/thunar-actions.xml`
 
 ## Philosophy
 
-This repository is not a giant app store.
-It is a premium desktop experience for a disciplined Linux system.
+This project follows the Flax system direction: general, efficient, perfect, flexible, portable, and safe.
