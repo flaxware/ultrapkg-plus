@@ -1,8 +1,9 @@
 #include <gtkmm.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <functional>
-#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -15,7 +16,7 @@ enum class PackageSource {
     apt,
     flatpak,
     appimage,
-    system
+    system,
 };
 
 struct PackageRecord {
@@ -32,6 +33,13 @@ struct PackageRecord {
     bool update_available = false;
 };
 
+struct AptRepository {
+    std::string name;
+    std::string uri;
+    std::string components;
+    bool enabled = true;
+};
+
 std::string lower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
@@ -43,7 +51,7 @@ std::string shellQuote(const std::string& value) {
     std::string out;
     out.reserve(value.size() + 2);
     out.push_back('\'');
-    for (char ch : value) {
+    for (const char ch : value) {
         if (ch == '\'') {
             out += "'\\''";
         } else {
@@ -73,10 +81,10 @@ std::string statusText(const PackageRecord& pkg) {
 
 std::vector<PackageRecord> demoCatalog() {
     return {
-        {"firefox", "Firefox", "Fast and private browsing", "A lightweight browser with secure defaults and a familiar experience for desktop users.", PackageSource::apt, "140.0", "firefox", "firefox", "", true, false},
+        {"firefox", "Firefox", "Fast and private browsing", "A lightweight browser with secure defaults and a familiar desktop experience.", PackageSource::apt, "140.0", "firefox", "firefox", "", true, false},
         {"vlc", "VLC", "Media player", "A compact media player with broad format support and low desktop overhead.", PackageSource::apt, "3.0.20", "video-x-generic", "vlc", "", false, false},
         {"thunar", "Thunar", "XFCE file manager", "The native file manager of XFCE, tuned for speed, clarity, and portability.", PackageSource::apt, "4.18.13", "folder", "thunar", "", true, false},
-        {"gdebi", "GDebi", "Debian package installer", "The classic tool for installing local .deb files with dependency resolution and clean user flow.", PackageSource::apt, "0.9", "package-x-generic", "gdebi", "", false, false},
+        {"gdebi", "GDebi", "Debian package installer", "The classic tool for installing local .deb files with dependency resolution.", PackageSource::apt, "0.9", "package-x-generic", "gdebi", "", false, false},
         {"steam", "Steam", "Gaming client", "A polished gaming storefront and launcher for desktop Linux users.", PackageSource::flatpak, "2.0.0", "steam", "steam", "com.valvesoftware.Steam", false, true},
         {"discord", "Discord", "Messaging", "A lightweight communication client for communities and voice chat.", PackageSource::flatpak, "0.29.0", "discord", "discord", "com.discordapp.Discord", false, false},
         {"signal", "Signal Desktop", "Private messaging", "Encrypted messaging for secure day-to-day communication.", PackageSource::flatpak, "7.5.0", "signal-desktop", "signal-desktop", "org.signal.Signal", false, false},
@@ -115,6 +123,62 @@ std::string fileOpenCommand(const std::filesystem::path& file) {
         return "flatpak install --user " + shellQuote(file.string());
     }
     return "ultrapkg install-file " + shellQuote(file.string());
+}
+
+std::filesystem::path repoConfigPath() {
+    const auto config_dir = std::filesystem::path("/etc/apt/sources.list.d");
+    return config_dir / "flax-system.list";
+}
+
+std::vector<AptRepository> loadAptRepositories() {
+    std::vector<AptRepository> out;
+    const auto path = repoConfigPath();
+    std::ifstream in(path);
+    if (!in) {
+        out.push_back({"Flax.system", "https://deb.debian.org/debian", "main contrib non-free non-free-firmware", true});
+        out.push_back({"Flax.system security", "https://security.debian.org/debian-security", "main contrib non-free non-free-firmware", true});
+        return out;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::string uri;
+        std::string comps;
+        std::string name = "Custom";
+        std::string entry = line;
+        const std::size_t pos1 = entry.find(' ');
+        if (pos1 != std::string::npos) {
+            uri = entry.substr(0, pos1);
+            const std::size_t pos2 = entry.find(' ', pos1 + 1);
+            if (pos2 != std::string::npos) {
+                comps = entry.substr(pos1 + 1, pos2 - pos1 - 1);
+            }
+        }
+        if (!uri.empty()) {
+            out.push_back({name, uri, comps, true});
+        }
+    }
+    return out;
+}
+
+bool saveAptRepositories(const std::vector<AptRepository>& repos) {
+    const auto path = repoConfigPath();
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+
+    for (const auto& repo : repos) {
+        if (!repo.enabled) {
+            continue;
+        }
+        out << "deb " << repo.uri << " " << repo.components << "\n";
+    }
+    return true;
 }
 
 } // namespace
@@ -293,7 +357,7 @@ public:
 
         auto provider = Gtk::CssProvider::create();
         provider->load_from_string(css);
-        auto* display = Gdk::Display::get_default();
+        auto display = Gdk::Display::get_default();
         if (display) {
             Gtk::StyleContext::add_provider_for_display(*display, provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
@@ -346,11 +410,15 @@ public:
         sidebar_.set_margin_end(10);
         sidebar_.set_size_request(220, -1);
 
-        auto addSidebarButton = [this](const std::string& id, const std::string& label) {
+        auto addSidebarButton = [this](const std::string& id, const std::string& label, bool is_action = false) {
             auto* button = Gtk::make_managed<Gtk::Button>(label);
             button->set_name("sidebar-button");
             button->set_halign(Gtk::Align::FILL);
-            button->signal_clicked().connect([this, id] { setCategory(id); });
+            if (is_action) {
+                button->signal_clicked().connect([this, id] { openRepositoryEditor(); });
+            } else {
+                button->signal_clicked().connect([this, id] { setCategory(id); });
+            }
             sidebar_.append(*button);
             sidebar_buttons_[id] = button;
         };
@@ -361,6 +429,7 @@ public:
         addSidebarButton("apt", "APT");
         addSidebarButton("flatpak", "Flatpak");
         addSidebarButton("appimage", "AppImages");
+        addSidebarButton("repos", "APT Repos", true);
         setCategory("overview");
 
         content_area_.set_orientation(Gtk::Orientation::HORIZONTAL);
@@ -477,6 +546,58 @@ private:
         status_label_.set_text("Package catalogue refreshed. Ready for APT, Flatpak, and AppImage sources.");
     }
 
+    void openRepositoryEditor() {
+        auto dialog = Gtk::Dialog("APT repository configuration", *this);
+        dialog.set_default_size(560, 420);
+
+        auto* scrolled = Gtk::make_managed<Gtk::ScrolledWindow>();
+        auto* text = Gtk::make_managed<Gtk::TextView>();
+        text->set_wrap_mode(Gtk::WrapMode::WORD_CHAR);
+
+        std::string content;
+        const auto repos = loadAptRepositories();
+        for (const auto& repo : repos) {
+            content += "deb " + repo.uri + " " + repo.components + "\n";
+        }
+        text->get_buffer()->set_text(content);
+
+        scrolled->set_child(*text);
+        dialog.get_content_area()->append(*scrolled);
+
+        auto* save = Gtk::make_managed<Gtk::Button>("Save");
+        save->signal_clicked().connect([this, text, &dialog]() {
+            const auto buffer = text->get_buffer();
+            const auto text_value = buffer->get_text();
+            std::vector<AptRepository> repos;
+            std::istringstream stream(text_value);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.empty() || line[0] == '#') {
+                    continue;
+                }
+                std::string uri = line;
+                const auto pos = line.find(' ');
+                if (pos != std::string::npos) {
+                    uri = line.substr(0, pos);
+                }
+                repos.push_back({"Custom", uri, "main", true});
+            }
+            if (saveAptRepositories(repos)) {
+                status_label_.set_text("APT repository list updated successfully.");
+            } else {
+                status_label_.set_text("Unable to write repository list. Run with root access.");
+            }
+            dialog.close();
+        });
+
+        auto* cancel = Gtk::make_managed<Gtk::Button>("Cancel");
+        cancel->signal_clicked().connect([&dialog]() { dialog.close(); });
+
+        dialog.add_button("Cancel", Gtk::ResponseType::CANCEL);
+        dialog.add_button("Save", Gtk::ResponseType::ACCEPT);
+        dialog.show();
+    }
+
     std::vector<PackageRecord> filteredPackages() const {
         std::vector<PackageRecord> out;
         const std::string query = lower(search_entry_.get_text());
@@ -570,7 +691,12 @@ private:
     }
 
     void onSelectLocalFile() {
-        auto dialog = Gtk::FileChooserNative::create("Select package file", *this, Gtk::FileChooserAction::OPEN, "Open", "Cancel");
+        auto dialog = Gtk::FileChooserNative::create(
+            "Select package file",
+            *this,
+            Gtk::FileChooserNative::Action::OPEN,
+            "Open",
+            "Cancel");
         auto filter = Gtk::FileFilter::create();
         filter->set_name("Package files");
         filter->add_pattern("*.deb");
@@ -618,10 +744,9 @@ private:
 
 int main(int argc, char** argv) {
     auto app = Gtk::Application::create("org.flax.ultrapkgplus");
-    auto* window = new MainWindow();
+    auto window = Gtk::make_managed<MainWindow>();
     if (argc > 1) {
         window->openPackageFile(std::filesystem::path(argv[1]));
     }
-    window->present();
-    return app->run();
+    return app->run(*window, argc, argv);
 }
